@@ -1,45 +1,17 @@
-"""
-Publication-Quality Plotting and Visualization Utilities.
-
-Generates plots with:
-- Error bars and standard deviation bands
-- Distinct, consistent color palettes for classifiers
-- Clear labels, legends, and gridlines
-- Matplotlib and Seaborn aesthetic configurations
-"""
-
-from typing import Dict, List, Optional
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import seaborn as sns
 
+sns.set_theme(style="whitegrid")
 
-# Set consistent style
-sns.set_theme(style="whitegrid", font="sans-serif")
-plt.rcParams.update(
-    {
-        "font.size": 11,
-        "axes.labelsize": 12,
-        "axes.titlesize": 13,
-        "xtick.labelsize": 10,
-        "ytick.labelsize": 10,
-        "legend.fontsize": 10,
-        "figure.titlesize": 14,
-        "lines.linewidth": 2.0,
-        "lines.markersize": 6,
-    }
-)
-
-CLASSIFIER_COLORS = {
-    "KNN": "#1f77b4",                # Steel Blue
-    "GaussianKDE": "#ff7f0e",        # Safety Orange
-    "Gaussian": "#2ca02c",           # Forest Green
-    "LogisticRegression": "#d62728", # Crimson Red
+COLORS = {
+    "KNN": "#1f77b4",
+    "GaussianKDE": "#ff7f0e",
+    "Gaussian": "#2ca02c",
+    "LogisticRegression": "#d62728",
 }
-
-CLASSIFIER_MARKERS = {
+MARKERS = {
     "KNN": "o",
     "GaussianKDE": "s",
     "Gaussian": "^",
@@ -47,181 +19,142 @@ CLASSIFIER_MARKERS = {
 }
 
 
-def plot_metric_vs_parameter(
-    summary_df: pd.DataFrame,
-    x_col: str,
-    y_mean_col: str,
-    y_std_col: str,
-    hue_col: str,
-    x_label: str,
-    y_label: str,
-    title: str,
-    save_path: str,
-    log_x: bool = False,
-    log_y: bool = False,
-    ylim: Optional[tuple] = None,
-) -> None:
-    """
-    Plot mean curves with shaded standard deviation bands for multiple classifiers.
-    """
+def plot_curves(
+    summary_df,
+    x_col,
+    y_mean,
+    y_std,
+    x_label,
+    y_label,
+    title,
+    save_path,
+    log_x=False,
+    ylim=None,
+    hline=None,
+    hline_label=None,
+):
     os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
-    plt.figure(figsize=(8, 5), dpi=300)
+    plt.figure(figsize=(7.5, 4.8), dpi=200)
 
-    groups = summary_df.groupby(hue_col)
-    for name, group in groups:
-        sorted_group = group.sort_values(by=x_col)
-        x_vals = sorted_group[x_col].values
-        y_mean = sorted_group[y_mean_col].values
-        y_std = sorted_group[y_std_col].values
+    for clf, group in summary_df.groupby("classifier"):
+        g = group.sort_values(x_col)
+        x = g[x_col].values
+        mean = g[y_mean].values
+        std = g[y_std].values
+        c = COLORS.get(clf)
+        plt.plot(x, mean, marker=MARKERS.get(clf, "o"), label=clf, color=c, linewidth=2)
+        plt.fill_between(x, mean - std, mean + std, color=c, alpha=0.16)
 
-        color = CLASSIFIER_COLORS.get(name, None)
-        marker = CLASSIFIER_MARKERS.get(name, "o")
-
-        plt.plot(
-            x_vals,
-            y_mean,
-            marker=marker,
-            label=name,
-            color=color,
-            linewidth=2.2,
-            alpha=0.9,
-        )
-        plt.fill_between(
-            x_vals,
-            y_mean - y_std,
-            y_mean + y_std,
-            color=color,
-            alpha=0.18,
-        )
+    if hline is not None:
+        plt.axhline(hline, color="black", linestyle="--", linewidth=1.2, label=hline_label)
 
     if log_x:
         plt.xscale("log")
-    if log_y:
-        plt.yscale("log")
     if ylim is not None:
         plt.ylim(ylim)
 
-    plt.xlabel(x_label, fontweight="bold")
-    plt.ylabel(y_label, fontweight="bold")
-    plt.title(title, fontweight="bold", pad=12)
-    plt.legend(frameon=True, loc="best")
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    plt.legend(frameon=True)
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
 
 
-def plot_distance_concentration_summary(
-    summary_df: pd.DataFrame,
-    x_col: str,
-    save_path: str,
-    title_prefix: str = "Experiment 1",
-) -> None:
-    """
-    Plot 3-panel figure showing Nearest Distance, Farthest Distance, and Distance Contrast.
-    """
+def plot_distance_summary(summary_df, x_col, x_label, title, save_path, log_x=False):
     os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5), dpi=300)
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.2), dpi=200)
 
-    first_clf = summary_df["classifier"].iloc[0]
-    sub_df = summary_df[summary_df["classifier"] == first_clf].sort_values(by=x_col)
-    x = sub_df[x_col].values
+    sub = summary_df[summary_df["classifier"] == summary_df["classifier"].iloc[0]].sort_values(x_col)
+    x = sub[x_col].values
 
-    # Panel 1: D_near
-    axes[0].plot(x, sub_df["mean_d_near_mean"], marker="o", color="#1f77b4", linewidth=2.2)
-    axes[0].fill_between(
-        x,
-        sub_df["mean_d_near_mean"] - sub_df["mean_d_near_std"],
-        sub_df["mean_d_near_mean"] + sub_df["mean_d_near_std"],
-        color="#1f77b4",
-        alpha=0.2,
-    )
-    axes[0].set_xlabel(f"{x_col}", fontweight="bold")
-    axes[0].set_ylabel("Mean Nearest Distance ($D_{near}$)", fontweight="bold")
-    axes[0].set_title("Nearest Neighbor Distance", fontweight="bold")
+    panels = [
+        ("mean_d_near", "Mean Nearest Distance ($D_{near}$)", "Nearest Distance", "#1f77b4", "o"),
+        ("mean_d_far", "Mean Farthest Distance ($D_{far}$)", "Farthest Distance", "#ff7f0e", "s"),
+        ("mean_contrast", "Contrast $(D_{far} - D_{near}) / D_{near}$", "Distance Contrast", "#2ca02c", "^"),
+    ]
+    for ax, (col, ylabel, ptitle, color, marker) in zip(axes, panels):
+        m = sub[f"{col}_mean"].values
+        s = sub[f"{col}_std"].values
+        ax.plot(x, m, marker=marker, color=color, linewidth=2)
+        ax.fill_between(x, m - s, m + s, color=color, alpha=0.18)
+        if log_x:
+            ax.set_xscale("log")
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(ylabel)
+        ax.set_title(ptitle)
 
-    # Panel 2: D_far
-    axes[1].plot(x, sub_df["mean_d_far_mean"], marker="s", color="#ff7f0e", linewidth=2.2)
-    axes[1].fill_between(
-        x,
-        sub_df["mean_d_far_mean"] - sub_df["mean_d_far_std"],
-        sub_df["mean_d_far_mean"] + sub_df["mean_d_far_std"],
-        color="#ff7f0e",
-        alpha=0.2,
-    )
-    axes[1].set_xlabel(f"{x_col}", fontweight="bold")
-    axes[1].set_ylabel("Mean Farthest Distance ($D_{far}$)", fontweight="bold")
-    axes[1].set_title("Farthest Neighbor Distance", fontweight="bold")
-
-    # Panel 3: Contrast C = (D_far - D_near) / D_near
-    axes[2].plot(x, sub_df["mean_contrast_mean"], marker="^", color="#2ca02c", linewidth=2.2)
-    axes[2].fill_between(
-        x,
-        sub_df["mean_contrast_mean"] - sub_df["mean_contrast_std"],
-        sub_df["mean_contrast_mean"] + sub_df["mean_contrast_std"],
-        color="#2ca02c",
-        alpha=0.2,
-    )
-    axes[2].set_xlabel(f"{x_col}", fontweight="bold")
-    axes[2].set_ylabel("Distance Contrast $C = (D_{far}-D_{near})/D_{near}$", fontweight="bold")
-    axes[2].set_title("Distance Contrast Degradation", fontweight="bold")
-
-    fig.suptitle(f"{title_prefix}: High-Dimensional Distance Concentration", fontsize=14, fontweight="bold")
+    fig.suptitle(title, fontweight="bold")
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
 
 
-def plot_preprocessing_comparison(
-    summary_df: pd.DataFrame,
-    metric_mean: str,
-    metric_std: str,
-    y_label: str,
-    title: str,
-    save_path: str,
-) -> None:
-    """
-    Grouped bar plot comparing preprocessing pipelines (Raw, Standardized, Weighted, Selected, Oracle).
-    """
+def plot_scale_regimes(summary_df, metric_mean, metric_std, y_label, title, save_path):
     os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
-    plt.figure(figsize=(10, 6), dpi=300)
+    regimes = ["Noise-Dominated", "Equal-Scale", "Signal-Dominated"]
+    settings = ["Raw", "Standardized", "Weighted", "Selected", "Oracle"]
+    classifiers = ["KNN", "GaussianKDE", "Gaussian", "LogisticRegression"]
+    palette = sns.color_palette("muted", len(settings))
 
-    # Order of settings
-    settings_order = ["Raw", "Standardized", "Weighted", "Selected", "Oracle"]
-    available_settings = [s for s in settings_order if s in summary_df["setting"].unique()]
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.8), dpi=200, sharey=True)
+    x = np.arange(len(classifiers))
+    width = 0.8 / len(settings)
 
-    classifiers = sorted(summary_df["classifier"].unique())
-    n_clfs = len(classifiers)
-    n_settings = len(available_settings)
+    for ax, regime in zip(axes, regimes):
+        rdf = summary_df[summary_df["regime"] == regime]
+        for i, setting in enumerate(settings):
+            sdf = rdf[rdf["setting"] == setting].set_index("classifier")
+            means = [sdf.loc[c, metric_mean] for c in classifiers]
+            stds = [sdf.loc[c, metric_std] for c in classifiers]
+            offset = (i - len(settings) / 2 + 0.5) * width
+            ax.bar(
+                x + offset,
+                means,
+                width=width,
+                yerr=stds,
+                label=setting,
+                color=palette[i],
+                capsize=2.5,
+                edgecolor="black",
+                linewidth=0.6,
+            )
+        ax.set_xticks(x)
+        ax.set_xticklabels(["KNN", "KDE", "Gaussian", "LogReg"])
+        ax.set_title(regime)
 
-    x = np.arange(n_clfs)
-    width = 0.8 / n_settings
-
-    palette = sns.color_palette("muted", n_settings)
-
-    for idx, setting in enumerate(available_settings):
-        sub_df = summary_df[summary_df["setting"] == setting].set_index("classifier")
-        means = [sub_df.loc[c, metric_mean] if c in sub_df.index else 0.0 for c in classifiers]
-        stds = [sub_df.loc[c, metric_std] if c in sub_df.index else 0.0 for c in classifiers]
-
-        offset = (idx - n_settings / 2.0 + 0.5) * width
-        plt.bar(
-            x + offset,
-            means,
-            width=width,
-            yerr=stds,
-            label=setting,
-            color=palette[idx],
-            capsize=3,
-            alpha=0.88,
-            edgecolor="black",
-            linewidth=0.8,
-        )
-
-    plt.xticks(x, classifiers, fontweight="bold")
-    plt.ylabel(y_label, fontweight="bold")
-    plt.title(title, fontweight="bold", pad=12)
-    plt.legend(title="Pipeline Setting", frameon=True, loc="upper right")
+    axes[0].set_ylabel(y_label)
+    axes[-1].legend(title="Pipeline", loc="upper right", fontsize=8.5)
+    fig.suptitle(title, fontweight="bold")
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
 
+
+def plot_paired_informative_dim(summary_df, y_mean, y_std, y_label, title, save_path, hline=None):
+    os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+    modes = ["Fixed Ambient (d=50)", "No Noise (d=r)"]
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.6), dpi=200, sharey=True)
+
+    for ax, mode in zip(axes, modes):
+        mdf = summary_df[summary_df["mode"] == mode]
+        for clf, group in mdf.groupby("classifier"):
+            g = group.sort_values("r")
+            x = g["r"].values
+            m = g[y_mean].values
+            s = g[y_std].values
+            c = COLORS.get(clf)
+            ax.plot(x, m, marker=MARKERS.get(clf, "o"), label=clf, color=c, linewidth=2)
+            ax.fill_between(x, m - s, m + s, color=c, alpha=0.16)
+        if hline is not None:
+            ax.axhline(hline, color="black", linestyle="--", linewidth=1.2, label="Bayes Optimal")
+        ax.set_xlabel("Informative Dimension ($r$)")
+        ax.set_title(mode)
+        ax.legend(frameon=True, fontsize=8.5)
+
+    axes[0].set_ylabel(y_label)
+    fig.suptitle(title, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
